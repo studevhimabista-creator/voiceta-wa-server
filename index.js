@@ -6,6 +6,7 @@
  * ============================================================
  *
  *  ENDPOINT:
+ *    GET  /qr          → buka di browser untuk scan QR ← BARU
  *    POST /send        → kirim pesan WA
  *    POST /send-batch  → kirim pesan ke banyak nomor sekaligus
  *    GET  /health      → cek status koneksi
@@ -24,33 +25,32 @@ const {
   isJidBroadcast,
 } = require("@whiskeysockets/baileys");
 
-const pino   = require("pino");
+const pino    = require("pino");
 const express = require("express");
 const axios   = require("axios");
+const QRCode  = require("qrcode");          // ← tambahan baru
 
 // ── Konfigurasi ──────────────────────────────────────────────
 const CONFIG = {
   PORT            : process.env.PORT             || 3000,
-  APPS_SCRIPT_URL : process.env.APPS_SCRIPT_URL  || "",   // URL doPost Google Apps Script
-  API_SECRET      : process.env.API_SECRET       || "rahasia123", // ganti di env!
+  APPS_SCRIPT_URL : process.env.APPS_SCRIPT_URL  || "",
+  API_SECRET      : process.env.API_SECRET       || "rahasia123",
   AUTH_DIR        : "./auth_info",
-  RECONNECT_DELAY : 5000,   // ms
+  RECONNECT_DELAY : 5000,
 };
 
 // ── State global ─────────────────────────────────────────────
-let sock          = null;
-let isConnected   = false;
-let qrCode        = null;
+let sock           = null;
+let isConnected    = false;
+let latestQR       = null;              // ← simpan string QR terbaru
 let reconnectTimer = null;
 
-// ── Logger (supaya log Railway tidak berantakan) ──────────────
 const logger = pino({ level: "warn" });
 
 // ── Express App ──────────────────────────────────────────────
 const app = express();
 app.use(express.json());
 
-// Middleware: validasi API secret agar endpoint tidak terbuka sembarangan
 function requireSecret(req, res, next) {
   const secret = req.headers["x-api-secret"] || req.query.secret;
   if (secret !== CONFIG.API_SECRET) {
@@ -59,11 +59,8 @@ function requireSecret(req, res, next) {
   next();
 }
 
-// ── Helper: format nomor ke JID Baileys ──────────────────────
 function toJid(phone) {
-  // Bersihkan semua karakter bukan angka
   let num = String(phone).replace(/[^0-9]/g, "");
-  // Ganti awalan 0 dengan 62 (Indonesia)
   if (num.startsWith("0")) num = "62" + num.slice(1);
   return num + "@s.whatsapp.net";
 }
@@ -80,48 +77,40 @@ async function connectWhatsApp() {
       creds : state.creds,
       keys  : makeCacheableSignalKeyStore(state.keys, logger),
     },
-    printQRInTerminal : true,   // tampilkan QR di log Railway saat pertama kali
+    printQRInTerminal          : false,   // matikan log terminal, pakai /qr endpoint
     generateHighQualityLinkPreview: false,
     browser: ["VOICETA-Bot", "Chrome", "1.0.0"],
   });
 
-  // Simpan credentials setiap kali berubah
   sock.ev.on("creds.update", saveCreds);
 
-  // ── Event: perubahan status koneksi ─────────────────────────
   sock.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
     if (qr) {
-      qrCode = qr;
-      console.log("⬜ QR Code tersedia — scan dengan WhatsApp di HP kamu.");
+      latestQR = qr;                      // ← simpan QR string
+      console.log("⬜ QR baru tersedia — buka /qr di browser untuk scan.");
     }
 
     if (connection === "open") {
       isConnected = true;
-      qrCode      = null;
-      console.log("✅ WhatsApp terhubung dan siap digunakan.");
+      latestQR    = null;                 // hapus QR setelah connected
+      console.log("✅ WhatsApp terhubung!");
     }
 
     if (connection === "close") {
       isConnected = false;
       const code  = lastDisconnect?.error?.output?.statusCode;
       const loggedOut = code === DisconnectReason.loggedOut;
-
-      console.log(`⚠️  Koneksi terputus (kode: ${code}). ${loggedOut ? "Sudah logout." : "Reconnect dalam 5 detik..."}`);
-
+      console.log(`⚠️  Koneksi terputus (${code}). ${loggedOut ? "Sudah logout." : "Reconnect..."}`);
       if (!loggedOut) {
-        // Reconnect otomatis dengan delay
         clearTimeout(reconnectTimer);
         reconnectTimer = setTimeout(connectWhatsApp, CONFIG.RECONNECT_DELAY);
       }
     }
   });
 
-  // ── Event: pesan masuk (untuk feedback dari Subject) ─────────
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
-
     for (const msg of messages) {
-      // Abaikan pesan dari diri sendiri dan broadcast
       if (msg.key.fromMe) continue;
       if (isJidBroadcast(msg.key.remoteJid)) continue;
 
@@ -129,44 +118,77 @@ async function connectWhatsApp() {
       const body =
         msg.message?.conversation ||
         msg.message?.extendedTextMessage?.text ||
-        msg.message?.imageMessage?.caption ||
-        "";
+        msg.message?.imageMessage?.caption || "";
 
       if (!body) continue;
+      console.log(`📩 Pesan masuk dari ${from}`);
 
-      console.log(`📩 Pesan masuk dari ${from}: ${body.substring(0, 80)}...`);
-
-      // Kirim ke Google Apps Script untuk disimpan di Notion
       if (CONFIG.APPS_SCRIPT_URL) {
-        try {
-          await axios.post(CONFIG.APPS_SCRIPT_URL, {
-            type      : "incoming_message",
-            from      : from,
-            body      : body,
-            timestamp : new Date().toISOString(),
-          }, { timeout: 10000 });
-
-          console.log(`✅ Feedback dari ${from} berhasil diteruskan ke Notion.`);
-        } catch (err) {
-          console.error(`❌ Gagal meneruskan pesan ke Apps Script: ${err.message}`);
-        }
+        await axios.post(CONFIG.APPS_SCRIPT_URL, {
+          type      : "incoming_message",
+          from,
+          body,
+          timestamp : new Date().toISOString(),
+        }, { timeout: 10000 }).catch(err => console.error("Forward error:", err.message));
       }
     }
   });
 }
 
 // ════════════════════════════════════════════════════════════
+//  ENDPOINT BARU: /qr — tampilkan QR code di browser
+// ════════════════════════════════════════════════════════════
+app.get("/qr", async (_req, res) => {
+  if (isConnected) {
+    return res.send(`
+      <html><body style="font-family:sans-serif;text-align:center;padding:40px;background:#f5f5f5">
+        <h2 style="color:#25D366">✅ WhatsApp sudah terhubung!</h2>
+        <p>Tidak perlu scan QR. Bot sudah aktif.</p>
+      </body></html>
+    `);
+  }
+
+  if (!latestQR) {
+    return res.send(`
+      <html><head><meta http-equiv="refresh" content="3"></head>
+      <body style="font-family:sans-serif;text-align:center;padding:40px;background:#f5f5f5">
+        <h2>⏳ Menunggu QR...</h2>
+        <p>Halaman ini akan otomatis refresh setiap 3 detik.</p>
+        <p style="color:#888;font-size:13px">Pastikan server sudah running dan belum pernah login sebelumnya.</p>
+      </body></html>
+    `);
+  }
+
+  try {
+    // Generate QR sebagai gambar PNG → embed langsung di HTML
+    const qrImageUrl = await QRCode.toDataURL(latestQR, {
+      width          : 300,
+      margin         : 2,
+      color          : { dark: "#000000", light: "#ffffff" },
+    });
+
+    res.send(`
+      <html><head><meta http-equiv="refresh" content="30"></head>
+      <body style="font-family:sans-serif;text-align:center;padding:40px;background:#f5f5f5">
+        <h2>📱 Scan QR ini dengan WhatsApp</h2>
+        <p style="color:#555">Buka WhatsApp → Linked Devices → Link a Device → scan gambar di bawah</p>
+        <img src="${qrImageUrl}" style="border:4px solid #25D366;border-radius:12px;margin:16px auto;display:block"/>
+        <p style="color:#888;font-size:12px">QR ini expired dalam ~60 detik. Halaman auto-refresh setiap 30 detik.</p>
+        <p style="color:#888;font-size:12px">Kalau QR expired, <a href="/qr">refresh manual</a> atau tunggu QR baru muncul.</p>
+      </body></html>
+    `);
+  } catch (err) {
+    res.status(500).send("Gagal generate QR: " + err.message);
+  }
+});
+
+// ════════════════════════════════════════════════════════════
 //  ENDPOINT: Kirim satu pesan
 // ════════════════════════════════════════════════════════════
 app.post("/send", requireSecret, async (req, res) => {
   const { phone, message } = req.body;
-
-  if (!phone || !message) {
-    return res.status(400).json({ error: "Field 'phone' dan 'message' wajib diisi." });
-  }
-  if (!isConnected || !sock) {
-    return res.status(503).json({ error: "WhatsApp belum terhubung. Cek log server untuk scan QR." });
-  }
+  if (!phone || !message) return res.status(400).json({ error: "Field 'phone' dan 'message' wajib diisi." });
+  if (!isConnected || !sock) return res.status(503).json({ error: "WhatsApp belum terhubung. Buka /qr untuk scan." });
 
   try {
     const jid = toJid(phone);
@@ -174,38 +196,29 @@ app.post("/send", requireSecret, async (req, res) => {
     console.log(`📤 Pesan terkirim ke ${phone}`);
     return res.json({ success: true, to: phone });
   } catch (err) {
-    console.error(`❌ Gagal kirim ke ${phone}: ${err.message}`);
     return res.status(500).json({ error: err.message });
   }
 });
 
 // ════════════════════════════════════════════════════════════
-//  ENDPOINT: Kirim batch (banyak nomor sekaligus)
+//  ENDPOINT: Kirim batch
 // ════════════════════════════════════════════════════════════
 app.post("/send-batch", requireSecret, async (req, res) => {
   const { messages } = req.body;
-  // Format: [ { phone: "628xxx", message: "..." }, ... ]
-
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return res.status(400).json({ error: "Field 'messages' harus berupa array yang tidak kosong." });
-  }
-  if (!isConnected || !sock) {
-    return res.status(503).json({ error: "WhatsApp belum terhubung." });
-  }
+  if (!Array.isArray(messages) || messages.length === 0)
+    return res.status(400).json({ error: "'messages' harus array yang tidak kosong." });
+  if (!isConnected || !sock) return res.status(503).json({ error: "WhatsApp belum terhubung." });
 
   const results = [];
   for (const item of messages) {
     try {
-      const jid = toJid(item.phone);
-      await sock.sendMessage(jid, { text: item.message });
+      await sock.sendMessage(toJid(item.phone), { text: item.message });
       results.push({ phone: item.phone, status: "sent" });
-      // Jeda 1.5 detik antar pesan agar tidak di-ban WA
       await new Promise(r => setTimeout(r, 1500));
     } catch (err) {
       results.push({ phone: item.phone, status: "failed", error: err.message });
     }
   }
-
   return res.json({ results });
 });
 
@@ -214,35 +227,23 @@ app.post("/send-batch", requireSecret, async (req, res) => {
 // ════════════════════════════════════════════════════════════
 app.get("/health", (_req, res) => {
   res.json({
-    status      : isConnected ? "connected" : "disconnected",
-    hasQR       : !!qrCode,
-    timestamp   : new Date().toISOString(),
+    status    : isConnected ? "connected" : "disconnected",
+    hasQR     : !!latestQR,
+    qrUrl     : latestQR ? "/qr" : null,
+    timestamp : new Date().toISOString(),
   });
 });
 
-// ════════════════════════════════════════════════════════════
-//  ENDPOINT: Status lengkap (dengan secret)
-// ════════════════════════════════════════════════════════════
 app.get("/status", requireSecret, (_req, res) => {
   res.json({
-    service     : "VOICETA WhatsApp Bot Server",
-    version     : "1.0.0",
-    connected   : isConnected,
-    hasQR       : !!qrCode,
-    appsScript  : CONFIG.APPS_SCRIPT_URL ? "configured" : "not configured",
-    uptime      : process.uptime(),
-    timestamp   : new Date().toISOString(),
+    service   : "VOICETA WhatsApp Bot Server",
+    connected : isConnected,
+    hasQR     : !!latestQR,
+    uptime    : process.uptime(),
+    timestamp : new Date().toISOString(),
   });
 });
 
-// ── Start server ─────────────────────────────────────────────
-app.listen(CONFIG.PORT, () => {
-  console.log(`🚀 Server berjalan di port ${CONFIG.PORT}`);
-  console.log(`   API Secret: ${CONFIG.API_SECRET}`);
-});
-
-// ── Inisialisasi koneksi WhatsApp ─────────────────────────────
-connectWhatsApp().catch(err => {
-  console.error("Fatal: gagal inisialisasi WhatsApp:", err);
-  process.exit(1);
-});
+// ── Start ─────────────────────────────────────────────────────
+app.listen(CONFIG.PORT, () => console.log(`🚀 Server jalan di port ${CONFIG.PORT}. Buka /qr untuk scan WhatsApp.`));
+connectWhatsApp().catch(err => { console.error("Fatal:", err); process.exit(1); });
