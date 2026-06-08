@@ -310,12 +310,19 @@ app.post("/logout", requireSecret, async (_req, res) => {
     fs.rmSync("./auth_info", { recursive: true, force: true });
     isConnected = false;
     latestQR = null;
+    sock = null;
     res.json({ success: true, message: "Logged out. Buka /qr untuk scan ulang." });
     setTimeout(() => connectWhatsApp(), 3000);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ── Keep-alive ping setiap 10 menit ──────────────────────────
+setInterval(() => {
+  const http = require("http");
+  http.get(`http://localhost:${CONFIG.PORT}/health`, () => {});
+}, 10 * 60 * 1000);
 
 // ── Start ─────────────────────────────────────────────────────
 app.listen(CONFIG.PORT, () => console.log(`🚀 Server jalan di port ${CONFIG.PORT}. Buka /qr untuk scan WhatsApp.`));
