@@ -244,6 +244,71 @@ app.get("/status", requireSecret, (_req, res) => {
   });
 });
 
+// ─────────────────────────────────────────
+// ENDPOINT: Admin panel
+// ─────────────────────────────────────────
+app.get("/admin", requireSecret, (_req, res) => {
+  res.send(`
+    <html>
+    <head>
+      <title>VOICETA Admin</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        body { font-family: sans-serif; text-align: center; padding: 40px; background: #f5f5f5; }
+        h1 { color: #25D366; }
+        .card { background: white; border-radius: 12px; padding: 24px; margin: 16px auto; max-width: 400px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .status { font-size: 18px; margin: 8px 0; }
+        .btn { display: inline-block; margin: 8px; padding: 12px 24px; border-radius: 8px; font-size: 16px; cursor: pointer; text-decoration: none; border: none; }
+        .btn-green { background: #25D366; color: white; }
+        .btn-red { background: #e53935; color: white; }
+        .btn-blue { background: #1976D2; color: white; }
+      </style>
+    </head>
+    <body>
+      <h1>🤖 VOICETA Bot Admin</h1>
+      <div class="card">
+        <p class="status">Status: <b>${isConnected ? '🟢 Connected' : '🔴 Disconnected'}</b></p>
+        <p class="status">QR Available: <b>${!!latestQR ? 'Ya' : 'Tidak'}</b></p>
+      </div>
+      <div class="card">
+        <a href="/qr?secret=Bismillahstudev456" class="btn btn-green">📷 Scan QR</a>
+        <a href="/status?secret=Bismillahstudev456" class="btn btn-blue">📊 Status</a>
+        <button class="btn btn-red" onclick="logout()">🚪 Logout WA</button>
+      </div>
+      <script>
+        function logout() {
+          if (!confirm('Yakin mau logout WhatsApp?')) return;
+          fetch('/logout', {
+            method: 'POST',
+            headers: { 'x-api-secret': 'Bismillahstudev456' }
+          }).then(r => r.json()).then(d => {
+            alert(d.message || 'Logged out!');
+            location.reload();
+          });
+        }
+      </script>
+    </body>
+    </html>
+  `);
+});
+
+// ─────────────────────────────────────────
+// ENDPOINT: Logout WhatsApp
+// ─────────────────────────────────────────
+app.post("/logout", requireSecret, async (_req, res) => {
+  try {
+    if (sock) await sock.logout();
+    const fs = require("fs");
+    fs.rmSync("./auth_info", { recursive: true, force: true });
+    isConnected = false;
+    latestQR = null;
+    res.json({ success: true, message: "Logged out. Buka /qr untuk scan ulang." });
+    setTimeout(() => connectWhatsApp(), 3000);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Start ─────────────────────────────────────────────────────
 app.listen(CONFIG.PORT, () => console.log(`🚀 Server jalan di port ${CONFIG.PORT}. Buka /qr untuk scan WhatsApp.`));
 connectWhatsApp().catch(err => { console.error("Fatal:", err); process.exit(1); });
