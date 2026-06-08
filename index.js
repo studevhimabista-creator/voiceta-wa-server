@@ -276,11 +276,6 @@ app.get("/admin", requireSecret, (_req, res) => {
         <button class="btn btn-red" onclick="logout()">🚪 Logout WA</button>
       </div>
       <div class="card">
-        <a href="/qr?secret=Bismillahstudev456" class="btn btn-green">📷 Scan QR</a>
-        <a href="/status?secret=Bismillahstudev456" class="btn btn-blue">📊 Status</a>
-        <button class="btn btn-red" onclick="logout()">🚪 Logout WA</button>
-      </div>
-      <div class="card">
         <h3 style="margin-top:0">🔗 Quick Links</h3>
         <a href="https://app.notion.so/p/bd8b13e3d27f8243893d816e67066681?v=223b13e3d27f83cc910208a3d1501661" target="_blank" class="btn btn-blue">📋 Notion DB</a>
         <a href="https://docs.google.com/spreadsheets/d/1gSszu1BzTOgyfVO3U2EbBi4Iun5bq3Ij5edXKauDj0o" target="_blank" class="btn btn-blue">📊 Spreadsheet</a>
