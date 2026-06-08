@@ -277,10 +277,10 @@ app.get("/admin", requireSecret, (_req, res) => {
       </div>
       <div class="card">
         <h3 style="margin-top:0">🔗 Quick Links</h3>
-        <a href="https://https://app.notion.com/p/bd8b13e3d27f8243893d816e67066681?v=223b13e3d27f83cc910208a3d1501661" target="_blank" class="btn btn-blue">📋 Notion DB</a>
+        <a href="https://www.notion.so/studevhimabista/VOICETA-bd8b13e3d27f8243893d816e67066681" target="_blank" class="btn btn-blue">📋 Notion DB</a>
         <a href="https://docs.google.com/spreadsheets/d/1gSszu1BzTOgyfVO3U2EbBi4Iun5bq3Ij5edXKauDj0o" target="_blank" class="btn btn-blue">📊 Spreadsheet</a>
         <a href="https://script.google.com/u/0/home/projects/1xMk96tNJCAk0NzE1SwOoiAdPo-X8f1AtoK6cuVd6_NIRxXVWsGxtJLPg/edit" target="_blank" class="btn btn-blue">⚙️ Apps Script</a>
-        <a href="https://https://railway.com/project/392c6f90-49f1-4f02-af87-a8bed1f702da/service/215c86b8-1e01-4566-b673-6770eebeedf9?environmentId=32f3b726-49bc-4a25-8970-081ef96a244c" target="_blank" class="btn btn-blue">🚂 Railway</a>
+        <a href="https://railway.app/project/392c6f90-49f1-4f02-af87-a8bed1f702da/service/c699eae9-4e30-4cfa-9695-0c6e373377ff" target="_blank" class="btn btn-blue">🚂 Railway</a>
         <a href="https://github.com/studevhimabista-creator/voiceta-wa-server" target="_blank" class="btn btn-blue">🐱 GitHub</a>
       </div>
       <script>
