@@ -275,6 +275,19 @@ app.get("/admin", requireSecret, (_req, res) => {
         <a href="/status?secret=Bismillahstudev456" class="btn btn-blue">📊 Status</a>
         <button class="btn btn-red" onclick="logout()">🚪 Logout WA</button>
       </div>
+      <div class="card">
+        <a href="/qr?secret=Bismillahstudev456" class="btn btn-green">📷 Scan QR</a>
+        <a href="/status?secret=Bismillahstudev456" class="btn btn-blue">📊 Status</a>
+        <button class="btn btn-red" onclick="logout()">🚪 Logout WA</button>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">🔗 Quick Links</h3>
+        <a href="https://app.notion.so/p/bd8b13e3d27f8243893d816e67066681?v=223b13e3d27f83cc910208a3d1501661" target="_blank" class="btn btn-blue">📋 Notion DB</a>
+        <a href="https://docs.google.com/spreadsheets/d/1gSszu1BzTOgyfVO3U2EbBi4Iun5bq3Ij5edXKauDj0o" target="_blank" class="btn btn-blue">📊 Spreadsheet</a>
+        <a href="https://script.google.com/u/0/home/projects/1xMk96tNJCAk0NzE1SwOoiAdPo-X8f1AtoK6cuVd6_NIRxXVWsGxtJLPg/edit" target="_blank" class="btn btn-blue">⚙️ Apps Script</a>
+        <a href="https://railway.app" target="_blank" class="btn btn-blue">🚂 Railway</a>
+        <a href="https://github.com/studevhimabista-creator/voiceta-wa-server" target="_blank" class="btn btn-blue">🐱 GitHub</a>
+      </div>
       <script>
         function logout() {
           if (!confirm('Yakin mau logout WhatsApp?')) return;
